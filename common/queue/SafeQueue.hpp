@@ -7,6 +7,7 @@
 #include <mutex>
 #include <queue>
 #include <condition_variable>
+#include <functional>
 
 template<typename T>
 class SafeQueue
@@ -38,7 +39,7 @@ public:
     bool push(T data) {
         std::unique_lock<std::mutex> lock(m_mutex);
         if (m_close) return false;
-        if(m_queue.size() == m_maxSize) {
+        if(m_maxSize > 0 && m_queue.size() == m_maxSize) {
             return false;
         }
         m_queue.emplace(data);
@@ -72,9 +73,15 @@ public:
         }
     }
 
+    void reset() {
+        clear();
+        m_close = false;
+    }
+
     void close() {
         std::unique_lock<std::mutex> lock(m_mutex);
         m_close = true;
         m_dataCond.notify_all();
     }
+
 };

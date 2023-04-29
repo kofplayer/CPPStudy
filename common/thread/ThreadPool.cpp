@@ -8,6 +8,7 @@
 
 void ThreadPool::start(int threadCount) {
     m_running = true;
+    m_safeQueue.reset();
     for (int i = 0; i < threadCount; ++i) {
         auto p = std::make_shared<std::thread>([this](){
             while (m_running) {
