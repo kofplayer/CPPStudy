@@ -61,7 +61,20 @@ public:
             return true;
         }
     }
-
+    bool popAll(std::queue<T>& datas) {
+        std::unique_lock<std::mutex> lock(m_mutex);
+        if (m_close) return false;
+        m_dataCond.wait(lock, [this]{return m_close || !this->m_queue.empty();});
+        if(m_queue.empty())
+        {
+            return false;
+        }
+        else
+        {
+            datas =std::move(m_queue);
+            return true;
+        }
+    }
     void clear() {
         std::unique_lock<std::mutex> lock(m_mutex);
         while (!m_queue.empty()) {
