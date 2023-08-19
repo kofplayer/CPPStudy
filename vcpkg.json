@@ -1,0 +1,12 @@
+{
+  "name" : "cppstudy",
+  "version-string" : "1.0.0",
+  "builtin-baseline" : "576f3f1ad13bf2c3bd06520adfe41b69448cc033",
+  "dependencies" : [ {
+    "name" : "boost",
+    "version>=" : "1.82.0#2"
+  }, {
+    "name" : "jemalloc",
+    "version>=" : "5.3.0#1"
+  } ]
+}
