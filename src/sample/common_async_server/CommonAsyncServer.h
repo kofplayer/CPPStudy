@@ -16,7 +16,7 @@ public:
     using connect_id_type = uint64_t;
 
     CommonAsyncServer();
-    bool start(const boost::asio::ip::tcp::endpoint& endpoint, int threadCount);
+    bool start(const boost::asio::ip::tcp::endpoint& endpoint, int rwThreadCount);
     bool stop();
 
     void onConnect(const std::function<void(connect_id_type, const std::string &)>& callback);

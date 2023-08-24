@@ -12,15 +12,15 @@ CommonAsyncServer::CommonAsyncServer() {
     m_genConnectId = 1;
 }
 
-bool CommonAsyncServer::start(const boost::asio::ip::tcp::endpoint &endpoint, int threadCount) {
+bool CommonAsyncServer::start(const boost::asio::ip::tcp::endpoint &endpoint, int rwThreadCount) {
     if (m_running) {
         return false;
     }
     m_running = true;
-    if (threadCount <= 0) {
-        threadCount = 1;
+    if (rwThreadCount <= 0) {
+        rwThreadCount = 1;
     }
-    for (int i=0; i<threadCount; ++i) {
+    for (int i=0; i<rwThreadCount; ++i) {
         std::shared_ptr<Worker> worker(new Worker());
         m_workers.emplace_back(std::shared_ptr<Worker>(worker));
         worker->work = std::make_shared<boost::asio::io_service::work>(worker->ioService);
@@ -70,7 +70,7 @@ void CommonAsyncServer::acceptHandler(const boost::system::error_code &ec)
         ci->connectId = connectId;
         m_genWorker->ioService.post([this, worker = m_genWorker, ci](){
             worker->connectInfos.insert(std::make_pair(ci->connectId, ci));
-            ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, worker, connectId = ci->connectId] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, connectId, worker); });
+            ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, worker, ci] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, ci->connectId, worker); });
         });
         m_genWorker = getWorkerByConnectId(m_genConnectId);
         m_socket = std::make_shared<boost::asio::ip::tcp::socket>(m_genWorker->ioService);
@@ -94,7 +94,7 @@ CommonAsyncServer::readHandler(const boost::system::error_code &ec, std::size_t 
         }
         auto ci = worker->connectInfos[connectId];
         std::string msg(ci->readBuffer.data(), bytes_transferred);
-        ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, connectId, worker] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, connectId, worker); });
+        ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, ci, worker] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, ci->connectId, worker); });
         if (m_onMessage) {
             m_onMessage(connectId, msg.data(), msg.size());
         }
@@ -129,7 +129,7 @@ CommonAsyncServer::writeHandler(const boost::system::error_code &ec, std::size_t
     ci->sendMsgs.pop_front();
     if (!ci->sendMsgs.empty()) {
         ci->socket->async_send(boost::asio::buffer(*ci->sendMsgs.front())
-                ,[this, connectId, worker](const boost::system::error_code &ec, std::size_t bytes_transferred) { writeHandler(ec, bytes_transferred, connectId, worker); });
+                ,[this, ci, worker](const boost::system::error_code &ec, std::size_t bytes_transferred) { writeHandler(ec, bytes_transferred, ci->connectId, worker); });
     }
 }
 
@@ -156,7 +156,7 @@ bool CommonAsyncServer::sendMessage(CommonAsyncServer::connect_id_type connectId
         ci->sendMsgs.emplace_back(std::make_shared<std::string>(std::move(msg)));
         if (ci->sendMsgs.size() == 1) {
             ci->socket->async_send(boost::asio::buffer(*ci->sendMsgs.front())
-                    , [this, connectId, worker](const boost::system::error_code &ec, std::size_t bytes_transferred) { writeHandler(ec, bytes_transferred, connectId, worker); });
+                    , [this, ci, worker](const boost::system::error_code &ec, std::size_t bytes_transferred) { writeHandler(ec, bytes_transferred, ci->connectId, worker); });
         }
     });
     return true;
