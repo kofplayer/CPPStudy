@@ -10,51 +10,82 @@
 CommonAsyncServer::CommonAsyncServer() {
     m_running = false;
     m_genConnectId = 1;
+    m_ownIoService = false;
 }
 
-bool CommonAsyncServer::start(const boost::asio::ip::tcp::endpoint &endpoint, int rwThreadCount) {
+bool CommonAsyncServer::_start(const boost::asio::ip::tcp::endpoint &endpoint, int rwThreadCount,
+                               const std::shared_ptr<boost::asio::io_service> &ioService) {
     if (m_running) {
         return false;
     }
     m_running = true;
-    if (rwThreadCount <= 0) {
-        rwThreadCount = 1;
+    if (ioService) {
+        m_ownIoService = false;
+        m_ioService = ioService;
+    } else {
+        m_ownIoService = true;
+        m_ioService = std::make_shared<boost::asio::io_service>();
+        m_work = std::make_shared<boost::asio::io_service::work>(*m_ioService);
     }
-    for (int i=0; i<rwThreadCount; ++i) {
+    if (rwThreadCount > 0) {
+        for (int i=0; i<rwThreadCount; ++i) {
+            std::shared_ptr<Worker> worker(new Worker());
+            worker->ownIoService = true;
+            worker->ioService = std::make_shared<boost::asio::io_service>();
+            m_workers.emplace_back(std::shared_ptr<Worker>(worker));
+            worker->work = std::make_shared<boost::asio::io_service::work>(*worker->ioService);
+            m_threadGroup.create_thread([worker](){
+                worker->ioService->run();
+            });
+        }
+    } else {
         std::shared_ptr<Worker> worker(new Worker());
+        worker->ownIoService = false;
+        worker->ioService = m_ioService;
         m_workers.emplace_back(std::shared_ptr<Worker>(worker));
-        worker->work = std::make_shared<boost::asio::io_service::work>(worker->ioService);
-        m_threadGroup.create_thread([worker](){
-            worker->ioService.run();
-        });
     }
     m_genWorker = getWorkerByConnectId(m_genConnectId);
-    m_acceptor = std::make_shared<boost::asio::ip::tcp::acceptor>(m_ioService, endpoint);
-    m_socket = std::make_shared<boost::asio::ip::tcp::socket>(m_genWorker->ioService);
-    m_work = std::make_shared<boost::asio::io_service::work>(m_ioService);
+    m_acceptor = std::make_shared<boost::asio::ip::tcp::acceptor>(*m_ioService, endpoint);
+    m_socket = std::make_shared<boost::asio::ip::tcp::socket>(*m_genWorker->ioService);
     m_acceptor->listen();
     m_acceptor->async_accept(*m_socket, [this](const boost::system::error_code &ec) { acceptHandler(ec); });
-    m_threadGroup.create_thread([this](){
-        m_ioService.run();
-    });
+    if (m_ownIoService) {
+        m_threadGroup.create_thread([this](){
+            m_ioService->run();
+        });
+    }
     return true;
+}
+
+bool CommonAsyncServer::start(const boost::asio::ip::tcp::endpoint &endpoint, int rwThreadCount) {
+    return _start(endpoint, rwThreadCount, nullptr);
+}
+
+bool CommonAsyncServer::start(const boost::asio::ip::tcp::endpoint& endpoint, const std::shared_ptr<boost::asio::io_service> &ioService) {
+    assert(ioService);
+    return _start(endpoint, 0, ioService);
 }
 
 bool CommonAsyncServer::stop() {
     if (!m_running) {
         return false;
     }
-    m_work.reset();
     m_acceptor.reset();
-    m_ioService.stop();
     for (auto & worker : m_workers) {
         worker->work.reset();
-        worker->ioService.stop();
+        if (worker->ownIoService) {
+            worker->ioService->stop();
+        }
+    }
+    m_work.reset();
+    if (m_ownIoService) {
+        m_ioService->stop();
     }
     m_threadGroup.join();
     m_genWorker.reset();
     m_socket.reset();
     m_workers.clear();
+    m_ioService->reset();
     m_running = false;
     return true;
 }
@@ -68,12 +99,17 @@ void CommonAsyncServer::acceptHandler(const boost::system::error_code &ec)
         std::string address = m_socket->remote_endpoint().address().to_string();
         ci->socket = m_socket;
         ci->connectId = connectId;
-        m_genWorker->ioService.post([this, worker = m_genWorker, ci](){
+        auto func = [this, worker = m_genWorker, ci](){
             worker->connectInfos.insert(std::make_pair(ci->connectId, ci));
             ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, worker, ci] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, ci->connectId, worker); });
-        });
+        };
+        if (m_genWorker->ownIoService) {
+            m_genWorker->ioService->post(func);
+        } else {
+            func();
+        }
         m_genWorker = getWorkerByConnectId(m_genConnectId);
-        m_socket = std::make_shared<boost::asio::ip::tcp::socket>(m_genWorker->ioService);
+        m_socket = std::make_shared<boost::asio::ip::tcp::socket>(*m_genWorker->ioService);
         m_acceptor->async_accept(*m_socket, [this] (const boost::system::error_code &ec) { acceptHandler(ec); });
         if (m_onConnect) {
             m_onConnect(connectId, address);
@@ -147,7 +183,7 @@ void CommonAsyncServer::onMessage(const std::function<void(connect_id_type, cons
 
 bool CommonAsyncServer::sendMessage(CommonAsyncServer::connect_id_type connectId, const char *data, size_t len) {
     auto worker = getWorkerByConnectId(connectId);
-    worker->ioService.post([this, connectId, worker, msg = std::string(data, len)]() mutable {
+    auto func = [this, connectId, worker, msg = std::string(data, len)]() mutable {
         auto iter = worker->connectInfos.find(connectId);
         if (iter == worker->connectInfos.end()) {
             return;
@@ -158,18 +194,28 @@ bool CommonAsyncServer::sendMessage(CommonAsyncServer::connect_id_type connectId
             ci->socket->async_send(boost::asio::buffer(*ci->sendMsgs.front())
                     , [this, ci, worker](const boost::system::error_code &ec, std::size_t bytes_transferred) { writeHandler(ec, bytes_transferred, ci->connectId, worker); });
         }
-    });
+    };
+    if (worker->ownIoService || m_ownIoService) {
+        worker->ioService->post(func);
+    } else {
+        func();
+    }
     return true;
 }
 
 bool CommonAsyncServer::close(CommonAsyncServer::connect_id_type connectId) {
     auto worker = getWorkerByConnectId(connectId);
-    worker->ioService.post([connectId, worker]() mutable {
+    auto func = [connectId, worker]() mutable {
         auto iter = worker->connectInfos.find(connectId);
         if (iter == worker->connectInfos.end()) {
             return;
         }
         iter->second->socket->close();
-    });
+    };
+    if (worker->ownIoService || m_ownIoService) {
+        worker->ioService->post(func);
+    } else {
+        func();
+    }
     return true;
 }

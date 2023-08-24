@@ -12,12 +12,11 @@
 class CommonAsyncServerTest {
 public:
     static void test() {
-
-        boost::asio::io_service ioService;
+        std::shared_ptr<boost::asio::io_service> ioService = std::make_shared<boost::asio::io_service>();
         CommonAsyncServer svr;
         svr.onConnect([&svr, &ioService](CommonAsyncServer::connect_id_type connectId, const std::string & address){
             svr.sendMessage(connectId, address.data(), address.size());
-            ioService.post([connectId, address]{
+            ioService->post([connectId, address]{
                 std::cout << connectId << " connect, address: " << address << std::endl;
             });
         });
@@ -25,19 +24,21 @@ public:
             svr.sendMessage(connectId, data, len);
         });
         svr.onDisconnect([&ioService](CommonAsyncServer::connect_id_type connectId) {
-            ioService.post([connectId]{
+            ioService->post([connectId]{
                 std::cout << connectId << " disconnect" << std::endl;
             });
         });
-        svr.start(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 8080), 4);
-        boost::asio::deadline_timer timer1(ioService, boost::posix_time::seconds(50000000));
+        bool singleThread = true;
+        if (singleThread) {
+            svr.start(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 8080), ioService);
+        } else {
+            svr.start(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 8080), 4);
+        }
+        boost::asio::deadline_timer timer1(*ioService, boost::posix_time::seconds(5));
         timer1.async_wait([&svr](const boost::system::error_code &ec){
             svr.stop();
         });
-        std::thread t([&ioService](){
-            ioService.run();
-        });
-        t.join();
+        ioService->run();
     }
 };
 

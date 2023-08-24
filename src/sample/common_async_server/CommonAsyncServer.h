@@ -17,6 +17,7 @@ public:
 
     CommonAsyncServer();
     bool start(const boost::asio::ip::tcp::endpoint& endpoint, int rwThreadCount);
+    bool start(const boost::asio::ip::tcp::endpoint& endpoint, const std::shared_ptr<boost::asio::io_service>& ioService);
     bool stop();
 
     void onConnect(const std::function<void(connect_id_type, const std::string &)>& callback);
@@ -26,6 +27,7 @@ public:
     bool sendMessage(connect_id_type connectId, const char* data, size_t len);
     bool close(connect_id_type connectId);
 protected:
+    bool _start(const boost::asio::ip::tcp::endpoint& endpoint, int rwThreadCount, const std::shared_ptr<boost::asio::io_service>& ioService);
     struct ConnectInfo {
         connect_id_type connectId;
         std::shared_ptr<boost::asio::ip::tcp::socket> socket;
@@ -33,7 +35,8 @@ protected:
         std::list<std::shared_ptr<std::string>> sendMsgs;
     };
     struct Worker {
-        boost::asio::io_service ioService;
+        bool ownIoService;
+        std::shared_ptr<boost::asio::io_service> ioService;
         std::shared_ptr<boost::asio::io_service::work> work;
         std::unordered_map<connect_id_type, std::shared_ptr<ConnectInfo>> connectInfos;
     };
@@ -42,7 +45,9 @@ protected:
     void writeHandler(const boost::system::error_code &ec, std::size_t bytes_transferred, connect_id_type connectId, const std::shared_ptr<Worker>& worker);
 
     std::shared_ptr<Worker> getWorkerByConnectId(connect_id_type connectId);
-    boost::asio::io_service m_ioService;
+
+    bool m_ownIoService;
+    std::shared_ptr<boost::asio::io_service> m_ioService;
     std::shared_ptr<boost::asio::io_service::work> m_work;
     std::shared_ptr<boost::asio::ip::tcp::acceptor> m_acceptor;
     std::vector<std::shared_ptr<Worker>> m_workers;
