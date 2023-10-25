@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <string>
+#include <boost/asio.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
@@ -17,12 +18,18 @@ public:
         Connecting = 1,
         Connected = 2
     };
+    enum class ErrorCode {
+        Success = 0,
+        ConnectError = 1,
+        ReadError = 2,
+        WriteError
+    };
 
-    using OnConnectedCallBack = std::function<void(const boost::system::error_code&)>;
+    using OnConnectedCallBack = std::function<void(ErrorCode)>;
     using OnDisconnectedCallBack = std::function<void()>;
     using OnMessageCallBack = std::function<void(const char* data, size_t len)>;
 
-    void connect(const boost::asio::ip::tcp::endpoint& endpoint,
+    bool connect(const boost::asio::ip::tcp::endpoint& endpoint,
                  const std::shared_ptr<boost::asio::io_service>& ioService);
     void onConnect(OnConnectedCallBack& callback);
     void onDisconnect(OnDisconnectedCallBack& callback);
@@ -32,8 +39,10 @@ public:
     Status getStatus();
 protected:
     void readHandler(const boost::system::error_code& ec, std::size_t bytes_transferred);
-    void writeHandler(const boost::system::error_code &ec, std::size_t bytes_transferreds, std::shared_ptr<std::string> data);
+    void writeHandler(const boost::system::error_code &ec, std::size_t bytes_transferred, std::shared_ptr<std::string> data);
+    void onError(ErrorCode ec);
 
+    Status m_status;
     std::array<char, 1024> m_receiveBuffer;
     std::list<std::shared_ptr<std::string>> m_sendMessages;
     std::shared_ptr<boost::asio::io_service> m_ioService;
