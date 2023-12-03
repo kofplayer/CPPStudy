@@ -41,7 +41,7 @@ void EchoAsyncServer::readHandler(const boost::system::error_code& ec, std::size
         if (!m_connectInfos.contains(connectId)) {
             return;
         }
-        auto ci = m_connectInfos[connectId];
+        std::shared_ptr<ConnectInfo> ci = m_connectInfos[connectId];
         std::string msg(ci->readBuffer.data(), bytes_transferred);
         std::cout << "receive id:" << connectId << " msg:" << msg << std::endl;
         ci->sendMsgs.push_back(std::make_shared<std::string>(msg));
@@ -67,7 +67,7 @@ void EchoAsyncServer::writeHandler(const boost::system::error_code &ec, std::siz
         m_connectInfos.erase(connectId);
         return;
     }
-    auto ci = m_connectInfos[connectId];
+    std::shared_ptr<ConnectInfo> ci = m_connectInfos[connectId];
     assert(!ci->sendMsgs.empty());
     if (ci->sendMsgs.empty()) {
         return;

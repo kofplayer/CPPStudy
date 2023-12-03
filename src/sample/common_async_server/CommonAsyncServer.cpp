@@ -128,12 +128,12 @@ CommonAsyncServer::readHandler(const boost::system::error_code &ec, std::size_t 
         if (!worker->connectInfos.contains(connectId)) {
             return;
         }
-        auto ci = worker->connectInfos[connectId];
-        std::string msg(ci->readBuffer.data(), bytes_transferred);
-        ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, ci, worker] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, ci->connectId, worker); });
+        std::shared_ptr<ConnectInfo> ci = worker->connectInfos[connectId];
         if (m_onMessage) {
-            m_onMessage(connectId, msg.data(), msg.size());
+            m_onMessage(connectId, ci->readBuffer.data(), bytes_transferred);
         }
+        ci->socket->async_read_some(boost::asio::buffer(ci->readBuffer), [this, ci, worker] (const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred, ci->connectId, worker); });
+        
     }
     else {
         worker->connectInfos.erase(connectId);
@@ -156,7 +156,7 @@ CommonAsyncServer::writeHandler(const boost::system::error_code &ec, std::size_t
         }
         return;
     }
-    auto ci = worker->connectInfos[connectId];
+    std::shared_ptr<ConnectInfo> ci = worker->connectInfos[connectId];
     assert(!ci->sendMsgs.empty());
     if (ci->sendMsgs.empty()) {
         return;

@@ -31,9 +31,9 @@ public:
 
     bool connect(const boost::asio::ip::tcp::endpoint& endpoint,
                  const std::shared_ptr<boost::asio::io_service>& ioService);
-    void onConnect(OnConnectedCallBack& callback);
-    void onDisconnect(OnDisconnectedCallBack& callback);
-    void onMessage(OnMessageCallBack& callback);
+    void onConnect(const OnConnectedCallBack& callback);
+    void onDisconnect(const OnDisconnectedCallBack& callback);
+    void onMessage(const OnMessageCallBack& callback);
     bool sendMessage(const char* data, size_t len);
     bool close();
     Status getStatus();

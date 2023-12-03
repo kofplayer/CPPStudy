@@ -53,7 +53,7 @@ void CommonAsyncClient::onError(CommonAsyncClient::ErrorCode ec) {
     }
 }
 
-void CommonAsyncClient::onConnect(CommonAsyncClient::OnConnectedCallBack &callback) {
+void CommonAsyncClient::onConnect(const CommonAsyncClient::OnConnectedCallBack &callback) {
     m_onConnect = callback;
 }
 
@@ -74,11 +74,11 @@ bool CommonAsyncClient::close() {
     return false;
 }
 
-void CommonAsyncClient::onDisconnect(CommonAsyncClient::OnDisconnectedCallBack &callback) {
+void CommonAsyncClient::onDisconnect(const CommonAsyncClient::OnDisconnectedCallBack &callback) {
     m_onDisconnect = callback;
 }
 
-void CommonAsyncClient::onMessage(CommonAsyncClient::OnMessageCallBack &callback) {
+void CommonAsyncClient::onMessage(const CommonAsyncClient::OnMessageCallBack &callback) {
     m_onMessage = callback;
 }
 
@@ -112,6 +112,7 @@ void CommonAsyncClient::readHandler(const boost::system::error_code &ec, std::si
     if (m_onMessage) {
         m_onMessage(m_receiveBuffer.data(), bytes_transferred);
     }
+    m_socket->async_read_some(boost::asio::buffer(m_receiveBuffer), [this](const boost::system::error_code& ec, std::size_t bytes_transferred) { readHandler(ec, bytes_transferred); });
 }
 
 void CommonAsyncClient::writeHandler(const boost::system::error_code &ec, std::size_t bytes_transferred,
