@@ -8,6 +8,7 @@
 
 #include <functional>
 #include <string>
+#include <list>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 

@@ -7,6 +7,7 @@
 
 #include <boost/asio.hpp>
 #include <string>
+#include <list>
 #include <unordered_map>
 
 class EchoAsyncServer {
