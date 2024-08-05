@@ -10,3 +10,7 @@ add_executable(CPPStudy ${SRC_LIST})
 find_package(Boost REQUIRED COMPONENTS thread)
 
 target_link_libraries(CPPStudy PRIVATE Boost::thread)
+
+if (WIN32)
+    target_link_libraries(CPPStudy PRIVATE ws2_32 mswsock)
+endif()
